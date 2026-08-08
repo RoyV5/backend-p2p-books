@@ -46,7 +46,22 @@ router.post('/login', async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(400).json({error: 'Invalid credentials'})
         }
-        const user = result.rows[0];
+        
+        const row = result.rows[0];
+
+        if (!row) {
+        // user doesn't exist
+        }
+
+        const user = {
+            id: row.id,
+            email: row.email,
+            passwordHash: row.password_hash,
+            privateProfile: row.private_profile,
+            displayName: row.display_name,
+            createdAt: row.created_at,
+        };
+
         const isMatch = await bcrypt.compare(password, user.passwordHash);
         if (!isMatch) {
             return res.status(400).json({error: 'Invalid credentials'})

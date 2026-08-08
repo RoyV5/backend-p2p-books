@@ -8,7 +8,7 @@ const router = express.Router();
 // single book addition route
 router.post('/books', auth, async (req, res) => {
     const { isbn } = req.body
-    const userId = user.userId;
+    const userId = req.user.id;
 
     if (!isbn) {
         return res.status(400).json({ error: 'ISBN is required'})
@@ -56,8 +56,7 @@ router.post('/books', auth, async (req, res) => {
 });
 
 router.get('/books', auth, async (req, res) => {
-    const userId = req.user.userId;
-
+    const userId = req.user.id;
     try {
         const result = await db.query(
             `SELECT
@@ -74,7 +73,6 @@ router.get('/books', auth, async (req, res) => {
              ORDER BY ub.created_at DESC`,
             [userId]
         );
-
         res.json(result.rows);
 
     } catch (err) {
@@ -84,7 +82,7 @@ router.get('/books', auth, async (req, res) => {
 });
 
 router.delete('/books/:isbn', auth, async (req, res) => {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const { isbn } = req.params;
 
     try {
