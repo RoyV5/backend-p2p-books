@@ -1,9 +1,12 @@
 const express = require('express');
 const db = require('../config/db');
 const auth = require('../middleware/auth');
-const getBookData = require('../services/fetchingService')
+const getBookData = require('../services/fetchingService');
+const isbn = require('../middleware/isbn');
 
 const router = express.Router();
+
+router.use(isbn);
 
 // single book addition route
 router.post('/books', auth, async (req, res) => {
@@ -104,6 +107,5 @@ router.delete('/books/:isbn', auth, async (req, res) => {
         res.status(500).json({ error: 'Error removing book' });
     }
 });
-
 
 module.exports = router;

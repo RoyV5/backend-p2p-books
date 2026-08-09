@@ -25,7 +25,7 @@ async function getOpenLibraryMetadata(isbn) {
         .pop() ?? null;
 
     const coverUrl = await getOpenLibraryCover(isbn);
-    return {
+    const result = {
         isbn,
         title: info.title ?? null,
         authors: info.authors?.map(author => author.name) ?? [],
@@ -45,6 +45,9 @@ async function getOpenLibraryMetadata(isbn) {
             null,
         language: language
     };
+    console.log('openLibrary result', result)
+    return result;
+    
 }
 
 async function getGoogleBook(isbn) {
@@ -72,7 +75,7 @@ async function getGoogleBook(isbn) {
         info.imageLinks?.smallThumbnail ??
         null;
 
-    return {
+    const result = {
         isbn,
         title: info.title ?? null,
         authors: info.authors ?? [],
@@ -83,6 +86,8 @@ async function getGoogleBook(isbn) {
         published_date: info.publishedDate ?? null,
         language: info.language ?? null
     };
+    console.log('Google result', result);
+    return result;
 }
 
 async function getOpenLibraryCover(isbn) {
@@ -137,7 +142,7 @@ function reconcileBookData(openLibraryBook, googleBook) {
 
         cover_url:
             googleBook.cover_url ?? 
-            openLibraryCover,
+            openLibraryBook.cover_url,
         publisher:
             openLibraryBook.publisher ??
             googleBook.publisher,
@@ -153,7 +158,7 @@ function reconcileBookData(openLibraryBook, googleBook) {
 }
 
 function normalizeTitle(title) {
-    if (!title) return null;
+    if (!title) return null
 
     const isAllUppercase = title === title.toUpperCase();
     const isAllLowercase = title === title.toLowerCase();
@@ -202,14 +207,13 @@ async function getBookData(isbn) {
         googleBook
     );
     reconciledBook.title = normalizeTitle(reconciledBook.title);
+    console.log(reconciledBook)
     return reconciledBook;
 }
 
 async function test(isbn) {
-    console.log('testing')
     const result = await getBookData(isbn);
     console.log(result)
 }
 
-test(9788426114068)
 module.exports = getBookData;
