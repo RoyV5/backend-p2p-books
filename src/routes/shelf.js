@@ -40,7 +40,7 @@ router.post('/books', auth, async (req, res) => {
                         page_count,
                         cover_url,
                         publisher,
-                        published_date,
+                        published_year,
                         language
                     )
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
@@ -52,7 +52,7 @@ router.post('/books', auth, async (req, res) => {
                     book.page_count,
                     book.cover_url,
                     book.publisher,
-                    book.published_date,
+                    book.published_year,
                     book.language
                 ]
             );
@@ -87,7 +87,7 @@ router.get('/books', auth, async (req, res) => {
                 b.page_count,
                 b.cover_url,
                 b.publisher,
-                b.published_date,
+                b.published_year,
                 b.language,
                 b.created_at
              FROM books b

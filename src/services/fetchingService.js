@@ -1,8 +1,14 @@
 const axios = require('axios');
-const googleURL = 'https://www.googleapis.com/books/v1/volumes';
+
+const googleURL =
+    'https://www.googleapis.com/books/v1/volumes';
+
 const openLibraryURL =
     'http://openlibrary.org/api/volumes/brief/isbn/';
-const getWithRetry = require('../utils/retryHelper')
+
+const getWithRetry = require('../utils/retryHelper');
+const extractPublishedYear = require('../utils/date');
+
 
 async function getOpenLibraryMetadata(isbn) {
     const response = await axios.get(
@@ -20,12 +26,14 @@ async function getOpenLibraryMetadata(isbn) {
     const info = record.data ?? {};
     const details = record.details?.details ?? {};
 
-    const language = details.languages?.[0]?.key
-        ?.split('/')
-        .pop() ?? null;
+    const language =
+        details.languages?.[0]?.key
+            ?.split('/')
+            .pop() ?? null;
 
     const coverUrl = await getOpenLibraryCover(isbn);
-    const result = {
+
+    return {
         isbn,
         title: info.title ?? null,
         authors: info.authors?.map(author => author.name) ?? [],
@@ -43,24 +51,23 @@ async function getOpenLibraryMetadata(isbn) {
             info.publish_date ??
             details.publish_date ??
             null,
-        language: language
+        language
     };
-    console.log('openLibrary result', result)
-    return result;
-    
 }
 
+
 async function getGoogleBook(isbn) {
-  const response = await getWithRetry(googleURL,
-    {
-      params: {
-        q: `isbn:${isbn}`,
-        key: process.env.GOOGLE_API_KEY,
-        projection: 'lite',
-      },
-    },
-    2
-  );
+    const response = await getWithRetry(
+        googleURL,
+        {
+            params: {
+                q: `isbn:${isbn}`,
+                key: process.env.GOOGLE_API_KEY,
+                projection: 'lite',
+            },
+        },
+        2
+    );
 
     const volume = response.data.items?.[0];
 
@@ -79,7 +86,7 @@ async function getGoogleBook(isbn) {
         info.imageLinks?.smallThumbnail ??
         null;
 
-    const result = {
+    return {
         isbn,
         title: info.title ?? null,
         authors: info.authors ?? [],
@@ -90,9 +97,8 @@ async function getGoogleBook(isbn) {
         published_date: info.publishedDate ?? null,
         language: info.language ?? null
     };
-    console.log('Google result', result);
-    return result;
 }
+
 
 async function getOpenLibraryCover(isbn) {
     const coverUrl =
@@ -109,6 +115,7 @@ async function getOpenLibraryCover(isbn) {
     }
 }
 
+
 function titlesMatch(openLibraryBook, googleBook) {
     if (!openLibraryBook?.title || !googleBook?.title) {
         return false;
@@ -119,6 +126,7 @@ function titlesMatch(openLibraryBook, googleBook) {
         googleBook.title.trim().toLowerCase()
     );
 }
+
 
 function reconcileBookData(openLibraryBook, googleBook) {
     // If the providers disagree about the title,
@@ -131,10 +139,13 @@ function reconcileBookData(openLibraryBook, googleBook) {
     // using Google Books to fill missing information.
     return {
         isbn: openLibraryBook.isbn,
+
         title: googleBook.title,
-        authors: googleBook.authors.length > 0
-            ? googleBook.authors
-            : openLibraryBook.authors,
+
+        authors:
+            googleBook.authors.length > 0
+                ? googleBook.authors
+                : openLibraryBook.authors,
 
         description:
             openLibraryBook.description ??
@@ -145,14 +156,15 @@ function reconcileBookData(openLibraryBook, googleBook) {
             googleBook.page_count,
 
         cover_url:
-            googleBook.cover_url ?? 
+            googleBook.cover_url ??
             openLibraryBook.cover_url,
+
         publisher:
             openLibraryBook.publisher ??
             googleBook.publisher,
 
         published_date:
-            googleBook.published_date ??    
+            googleBook.published_date ??
             openLibraryBook.published_date,
 
         language:
@@ -161,11 +173,15 @@ function reconcileBookData(openLibraryBook, googleBook) {
     };
 }
 
-function normalizeTitle(title) {
-    if (!title) return null
 
-    const isAllUppercase = title === title.toUpperCase();
-    const isAllLowercase = title === title.toLowerCase();
+function normalizeTitle(title) {
+    if (!title) return null;
+
+    const isAllUppercase =
+        title === title.toUpperCase();
+
+    const isAllLowercase =
+        title === title.toLowerCase();
 
     if (!isAllUppercase && !isAllLowercase) {
         return title;
@@ -176,21 +192,45 @@ function normalizeTitle(title) {
         .replace(/\b\w/g, char => char.toUpperCase());
 }
 
+
+function compileBook(book) {
+    return {
+        isbn: book.isbn,
+        title: normalizeTitle(book.title),
+        authors: book.authors ?? [],
+        description: book.description ?? null,
+        page_count: book.page_count ?? null,
+        cover_url: book.cover_url ?? null,
+        publisher: book.publisher ?? null,
+        published_year: extractPublishedYear(
+            book.published_date
+        ),
+        language: book.language ?? null
+    };
+}
+
+
 async function getBookData(isbn) {
     let openLibraryBook = null;
     let googleBook = null;
 
     try {
-        openLibraryBook = await getOpenLibraryMetadata(isbn);
+        openLibraryBook =
+            await getOpenLibraryMetadata(isbn);
     } catch (err) {
-        console.log(`OpenLibrary lookup failed for ${isbn}`);
+        console.log(
+            `OpenLibrary lookup failed for ${isbn}`
+        );
     }
 
     try {
-        googleBook = await getGoogleBook(isbn);
+        googleBook =
+            await getGoogleBook(isbn);
     } catch (err) {
-        console.log(err.message)
-        console.log(`Google Books lookup failed for ${isbn}`);
+        console.log(err.message);
+        console.log(
+            `Google Books lookup failed for ${isbn}`
+        );
     }
 
     if (!openLibraryBook && !googleBook) {
@@ -199,26 +239,27 @@ async function getBookData(isbn) {
 
     // If OpenLibrary failed, Google Books is all we have.
     if (!openLibraryBook) {
-        return googleBook;
+        return compileBook(googleBook);
     }
 
-    // If Google failed, use OpenLibrary alone.
+    // If Google Books failed, use OpenLibrary alone.
     if (!googleBook) {
-        return openLibraryBook;
+        return compileBook(openLibraryBook);
     }
 
     const reconciledBook = reconcileBookData(
         openLibraryBook,
         googleBook
     );
-    reconciledBook.title = normalizeTitle(reconciledBook.title);
-    console.log(reconciledBook)
-    return reconciledBook;
+
+    return compileBook(reconciledBook);
 }
+
 
 async function test(isbn) {
     const result = await getBookData(isbn);
-    console.log(result)
+    console.log(result);
 }
+
 
 module.exports = getBookData;
