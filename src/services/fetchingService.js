@@ -1,8 +1,8 @@
 const axios = require('axios');
-
 const googleURL = 'https://www.googleapis.com/books/v1/volumes';
 const openLibraryURL =
     'http://openlibrary.org/api/volumes/brief/isbn/';
+const getWithRetry = require('../utils/retryHelper')
 
 async function getOpenLibraryMetadata(isbn) {
     const response = await axios.get(
@@ -51,12 +51,16 @@ async function getOpenLibraryMetadata(isbn) {
 }
 
 async function getGoogleBook(isbn) {
-    const response = await axios.get(googleURL, {
-        params: {
-            q: `isbn:${isbn}`,
-            key: process.env.GOOGLE_API_KEY
-        }
-    });
+  const response = await getWithRetry(googleURL,
+    {
+      params: {
+        q: `isbn:${isbn}`,
+        key: process.env.GOOGLE_API_KEY,
+        projection: 'lite',
+      },
+    },
+    2
+  );
 
     const volume = response.data.items?.[0];
 
@@ -185,6 +189,7 @@ async function getBookData(isbn) {
     try {
         googleBook = await getGoogleBook(isbn);
     } catch (err) {
+        console.log(err.message)
         console.log(`Google Books lookup failed for ${isbn}`);
     }
 
