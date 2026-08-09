@@ -127,7 +127,7 @@ function reconcileBookData(openLibraryBook, googleBook) {
     // using Google Books to fill missing information.
     return {
         isbn: openLibraryBook.isbn,
-        title: openLibraryBook.title,
+        title: googleBook.title,
         authors: googleBook.authors.length > 0
             ? googleBook.authors
             : openLibraryBook.authors,
@@ -148,8 +148,8 @@ function reconcileBookData(openLibraryBook, googleBook) {
             googleBook.publisher,
 
         published_date:
-            openLibraryBook.published_date ??
-            googleBook.published_date,
+            googleBook.published_date ??    
+            openLibraryBook.published_date,
 
         language:
             openLibraryBook.language ??

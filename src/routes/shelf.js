@@ -8,13 +8,13 @@ const router = express.Router();
 
 router.use(isbn);
 
-// single book addition route
+// Single book addition route
 router.post('/books', auth, async (req, res) => {
-    const { isbn } = req.body
+    const { isbn } = req.body;
     const userId = req.user.id;
 
     if (!isbn) {
-        return res.status(400).json({ error: 'ISBN is required'})
+        return res.status(400).json({ error: 'ISBN is required' });
     }
 
     try {
@@ -24,21 +24,36 @@ router.post('/books', auth, async (req, res) => {
         );
 
         let book;
+
         if (cachedBook.rows.length > 0) {
             book = cachedBook.rows[0];
         } else {
             book = await getBookData(isbn);
+
             await db.query(
                 `INSERT INTO books
-                    (isbn, title, authors, description, page_count, cover_url)
-                VALUES ($1, $2, $3, $4, $5, $6)`,
+                    (
+                        isbn,
+                        title,
+                        authors,
+                        description,
+                        page_count,
+                        cover_url,
+                        publisher,
+                        published_date,
+                        language
+                    )
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
                 [
                     book.isbn,
                     book.title,
                     book.authors,
                     book.description,
                     book.page_count,
-                    book.cover_url
+                    book.cover_url,
+                    book.publisher,
+                    book.published_date,
+                    book.language
                 ]
             );
         }
@@ -48,9 +63,9 @@ router.post('/books', auth, async (req, res) => {
              VALUES ($1, $2)
              ON CONFLICT (user_id, isbn) DO NOTHING`,
             [userId, book.isbn]
-        )
+        );
 
-        res.status(201).json(book)
+        res.status(201).json(book);
 
     } catch (err) {
         console.error('Add book error:', err.message);
@@ -58,8 +73,10 @@ router.post('/books', auth, async (req, res) => {
     }
 });
 
+
 router.get('/books', auth, async (req, res) => {
     const userId = req.user.id;
+
     try {
         const result = await db.query(
             `SELECT
@@ -69,6 +86,9 @@ router.get('/books', auth, async (req, res) => {
                 b.description,
                 b.page_count,
                 b.cover_url,
+                b.publisher,
+                b.published_date,
+                b.language,
                 b.created_at
              FROM books b
              JOIN user_books ub ON ub.isbn = b.isbn
@@ -76,6 +96,7 @@ router.get('/books', auth, async (req, res) => {
              ORDER BY ub.created_at DESC`,
             [userId]
         );
+
         res.json(result.rows);
 
     } catch (err) {
@@ -83,6 +104,7 @@ router.get('/books', auth, async (req, res) => {
         res.status(500).json({ error: 'Error retrieving shelf' });
     }
 });
+
 
 router.delete('/books/:isbn', auth, async (req, res) => {
     const userId = req.user.id;
@@ -97,7 +119,9 @@ router.delete('/books/:isbn', auth, async (req, res) => {
         );
 
         if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Book not found on your shelf' });
+            return res.status(404).json({
+                error: 'Book not found on your shelf'
+            });
         }
 
         res.status(204).send();
@@ -107,5 +131,6 @@ router.delete('/books/:isbn', auth, async (req, res) => {
         res.status(500).json({ error: 'Error removing book' });
     }
 });
+
 
 module.exports = router;
