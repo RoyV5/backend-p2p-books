@@ -54,6 +54,47 @@ describe('Auth routes', () => {
                 .toBe('Email, password, or displayName is missing');
         });
 
+        test('rejects an invalid email', async () => {
+            const response = await request(app)
+                .post('/auth/register')
+                .send({
+                    email: 'not-an-email',
+                    password: 'password123',
+                    displayName: 'Test User'
+                });
+
+            expect(response.statusCode).toBe(400);
+            expect(response.body.error).toBe('Invalid email');
+        });
+
+        test('rejects a password shorter than 8 characters', async () => {
+            const response = await request(app)
+                .post('/auth/register')
+                .send({
+                    email: 'test@example.com',
+                    password: 'short',
+                    displayName: 'Test User'
+                });
+
+            expect(response.statusCode).toBe(400);
+            expect(response.body.error)
+                .toBe('Password must be at least 8 characters long');
+        });
+
+        test('rejects an empty display name', async () => {
+            const response = await request(app)
+                .post('/auth/register')
+                .send({
+                    email: 'test@example.com',
+                    password: 'password123',
+                    displayName: '   '
+                });
+
+            expect(response.statusCode).toBe(400);
+            expect(response.body.error).toBe('Display name is required');
+        });
+
+        
         test('rejects a duplicate email', async () => {
             const user = {
                 email: 'test@example.com',

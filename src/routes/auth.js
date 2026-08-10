@@ -2,7 +2,11 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../config/db');
-
+const {
+    isValidEmail,
+    isValidPassword,
+    isValidDisplayName
+} = require('../utils/validation');
 const router = express.Router();
 
 router.post('/register', async (req, res) => {
@@ -11,6 +15,24 @@ router.post('/register', async (req, res) => {
     if (!email || !password || !displayName) {
         return res.status(400).json({
             error: 'Email, password, or displayName is missing'
+        });
+    }
+
+        if (!isValidEmail(email)) {
+        return res.status(400).json({
+            error: 'Invalid email'
+        });
+    }
+
+    if (!isValidPassword(password)) {
+        return res.status(400).json({
+            error: 'Password must be at least 8 characters long'
+        });
+    }
+
+    if (!isValidDisplayName(displayName)) {
+        return res.status(400).json({
+            error: 'Display name is required'
         });
     }
 
@@ -68,6 +90,18 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
+
+    if (!isValidEmail(email)) {
+        return res.status(400).json({
+            error: 'Invalid email'
+        });
+    }
+
+    if (!isValidPassword(password)) {
+        return res.status(400).json({
+            error: 'Password must be at least 8 characters long'
+        });
+    }
 
     try {
         const result = await db.query(
