@@ -57,12 +57,19 @@ router.post('/', isbn, auth, async (req, res) => {
             );
         }
 
-        await db.query(
+        const shelfEntry = await db.query(
             `INSERT INTO user_books (user_id, isbn)
              VALUES ($1, $2)
-             ON CONFLICT (user_id, isbn) DO NOTHING`,
+             ON CONFLICT (user_id, isbn) DO NOTHING
+             RETURNING isbn`,
             [userId, book.isbn]
         );
+
+        if (shelfEntry.rows.length === 0) {
+            return res.status(409).json({
+                error: 'Book is already on your shelf'
+            });
+        }
 
         res.status(201).json(book);
 

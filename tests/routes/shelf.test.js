@@ -144,28 +144,35 @@ describe('Shelf routes', () => {
             expect(getBookData).not.toHaveBeenCalled();
         });
 
-        test('does not duplicate a book on the same shelf', async () => {
+        test('rejects adding a book already on the user shelf', async () => {
             getBookData.mockResolvedValue(book);
 
-            await request(app)
+            const firstResponse = await request(app)
                 .post('/shelf')
                 .set('Authorization', `Bearer ${token}`)
                 .send({
                     isbn: book.isbn
                 });
 
-            await request(app)
+            expect(firstResponse.statusCode).toBe(201);
+
+            const secondResponse = await request(app)
                 .post('/shelf')
                 .set('Authorization', `Bearer ${token}`)
                 .send({
                     isbn: book.isbn
                 });
+
+            expect(secondResponse.statusCode).toBe(409);
+            expect(secondResponse.body).toEqual({
+                error: 'Book is already on your shelf'
+            });
 
             const result = await db.query(
                 `SELECT *
-                 FROM user_books
-                 WHERE user_id = $1
-                   AND isbn = $2`,
+                FROM user_books
+                WHERE user_id = $1
+                AND isbn = $2`,
                 [user.id, book.isbn]
             );
 
