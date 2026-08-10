@@ -81,5 +81,4 @@ function isbn10ToISBN13(isbn10) {
 
     return `${isbn12}${checkDigit}`;
 }
-
 module.exports = normalizeISBN;

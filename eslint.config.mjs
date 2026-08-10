@@ -6,11 +6,17 @@ export default defineConfig([
   {
     languageOptions: {
       globals: {
-        ...globals.node // Adds process, __dirname, module, etc.
+        ...globals.node, // Adds process, __dirname, module, etc.
+        ...globals.jest  // <--- ADDED: Enables test, expect, describe, afterAll, etc.
       }
     }
   },
-  { files: ["**/*.{js,mjs,cjs}"], plugins: { js }, extends: ["js/recommended"], languageOptions: { globals: globals.browser } },
+  { 
+    files: ["**/*.{js,mjs,cjs}"], 
+    plugins: { js }, 
+    extends: ["js/recommended"], 
+    languageOptions: { globals: globals.browser } 
+  },
   { files: ["**/*.js"], languageOptions: { sourceType: "commonjs" } },
   {
     rules: {

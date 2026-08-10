@@ -8,7 +8,7 @@ const openLibraryURL =
 
 const getWithRetry = require('../utils/retryHelper');
 const extractPublishedYear = require('../utils/date');
-
+const normalizeTitle = require('../utils/title');
 
 async function getOpenLibraryMetadata(isbn) {
     const response = await axios.get(
@@ -173,24 +173,6 @@ function reconcileBookData(openLibraryBook, googleBook) {
     };
 }
 
-
-function normalizeTitle(title) {
-    if (!title) return null;
-
-    const isAllUppercase =
-        title === title.toUpperCase();
-
-    const isAllLowercase =
-        title === title.toLowerCase();
-
-    if (!isAllUppercase && !isAllLowercase) {
-        return title;
-    }
-
-    return title
-        .toLowerCase()
-        .replace(/\b\w/g, char => char.toUpperCase());
-}
 
 
 function compileBook(book) {

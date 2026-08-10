@@ -18,7 +18,4 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);   
 app.use('/api/shelf', shelfRoutes);  
 
-const PORT = process.env.PORT;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`MVP Backend active on http://localhost:${PORT}`);
-});
+module.exports = app;

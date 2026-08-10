@@ -6,10 +6,9 @@ const isbn = require('../middleware/isbn');
 
 const router = express.Router();
 
-router.use(isbn);
 
 // Single book addition route
-router.post('/books', auth, async (req, res) => {
+router.post('/', isbn, auth, async (req, res) => {
     const { isbn } = req.body;
     const userId = req.user.id;
 
@@ -74,7 +73,7 @@ router.post('/books', auth, async (req, res) => {
 });
 
 
-router.get('/books', auth, async (req, res) => {
+router.get('/', auth, async (req, res) => {
     const userId = req.user.id;
 
     try {
@@ -106,7 +105,7 @@ router.get('/books', auth, async (req, res) => {
 });
 
 
-router.delete('/books/:isbn', auth, async (req, res) => {
+router.delete('/:isbn', auth, async (req, res) => {
     const userId = req.user.id;
     const { isbn } = req.params;
 
