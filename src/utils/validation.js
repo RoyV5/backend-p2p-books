@@ -22,8 +22,26 @@ function isValidDisplayName(displayName) {
     return displayName.trim().length >= 1;
 }
 
+function isValidHandle(handle) {
+    if (typeof handle !== 'string') {
+        return false;
+    }
+
+    return /^[a-zA-Z0-9_]{3,30}$/.test(handle);
+}
+
+    function normalizeHandle(handle) {
+        if (!isValidHandle(handle)) {
+            throw new Error('Invalid handle');
+        }
+
+        return handle.toLowerCase();
+    }
+
 module.exports = {
     isValidEmail,
     isValidPassword,
-    isValidDisplayName
+    isValidDisplayName,
+    isValidHandle,
+    normalizeHandle
 };

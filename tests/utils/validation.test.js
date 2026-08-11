@@ -1,7 +1,9 @@
 const {
     isValidEmail,
     isValidPassword,
-    isValidDisplayName
+    isValidDisplayName,
+    isValidHandle,
+    normalizeHandle
 } = require('../../src/utils/validation');
 
 describe('Validation utilities', () => {
@@ -56,6 +58,53 @@ describe('Validation utilities', () => {
         test('rejects non-string values', () => {
             expect(isValidDisplayName(null)).toBe(false);
             expect(isValidDisplayName(123)).toBe(false);
+        });
+    });
+
+        describe('isValidHandle', () => {
+        test('accepts a valid handle', () => {
+            expect(isValidHandle('rodrigo_books')).toBe(true);
+        });
+
+        test('accepts a handle containing numbers', () => {
+            expect(isValidHandle('booklover123')).toBe(true);
+        });
+
+        test('rejects handles shorter than 3 characters', () => {
+            expect(isValidHandle('ab')).toBe(false);
+        });
+
+        test('rejects handles longer than 30 characters', () => {
+            expect(isValidHandle('a'.repeat(31))).toBe(false);
+        });
+
+        test('rejects handles containing spaces', () => {
+            expect(isValidHandle('rodrigo books')).toBe(false);
+        });
+
+        test('rejects handles containing punctuation', () => {
+            expect(isValidHandle('rodrigo.books')).toBe(false);
+            expect(isValidHandle('rodrigo-books')).toBe(false);
+            expect(isValidHandle('@rodrigo')).toBe(false);
+        });
+
+        test('rejects non-string values', () => {
+            expect(isValidHandle(null)).toBe(false);
+            expect(isValidHandle(123)).toBe(false);
+        });
+    });
+
+    describe('normalizeHandle', () => {
+        test('converts a valid handle to lowercase', () => {
+            expect(normalizeHandle('Rodrigo_Books')).toBe('rodrigo_books');
+        });
+
+        test('preserves an already lowercase handle', () => {
+            expect(normalizeHandle('rodrigo_books')).toBe('rodrigo_books');
+        });
+
+        test('throws for an invalid handle', () => {
+            expect(() => normalizeHandle('bad handle')).toThrow('Invalid handle');
         });
     });
 });

@@ -5,20 +5,22 @@ const db = require('../config/db');
 const {
     isValidEmail,
     isValidPassword,
-    isValidDisplayName
+    isValidHandle,
+    normalizeHandle
 } = require('../utils/validation');
+
 const router = express.Router();
 
 router.post('/register', async (req, res) => {
-    const { email, password, displayName } = req.body;
+    const { email, password, handle } = req.body;
 
-    if (!email || !password || !displayName) {
+    if (!email || !password || !handle) {
         return res.status(400).json({
-            error: 'Email, password, or displayName is missing'
+            error: 'Email, password, or handle is missing'
         });
     }
 
-        if (!isValidEmail(email)) {
+    if (!isValidEmail(email)) {
         return res.status(400).json({
             error: 'Invalid email'
         });
@@ -30,11 +32,13 @@ router.post('/register', async (req, res) => {
         });
     }
 
-    if (!isValidDisplayName(displayName)) {
+    if (!isValidHandle(handle)) {
         return res.status(400).json({
-            error: 'Display name is required'
+            error: 'Invalid handle'
         });
     }
+
+    const normalizedHandle = normalizeHandle(handle);
 
     try {
         const userExists = await db.query(
@@ -48,6 +52,17 @@ router.post('/register', async (req, res) => {
             });
         }
 
+        const handleExists = await db.query(
+            'SELECT id FROM users WHERE handle = $1',
+            [normalizedHandle]
+        );
+
+        if (handleExists.rows.length > 0) {
+            return res.status(400).json({
+                error: 'User with this handle already exists'
+            });
+        }
+
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(password, salt);
 
@@ -55,17 +70,24 @@ router.post('/register', async (req, res) => {
             `INSERT INTO users (
                 email,
                 password_hash,
-                display_name
+                display_name,
+                handle
             )
-            VALUES ($1, $2, $3)
-            RETURNING id, email, display_name, created_at`,
-            [email, passwordHash, displayName]
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, email, display_name, handle, created_at`,
+            [
+                email,
+                passwordHash,
+                normalizedHandle,
+                normalizedHandle
+            ]
         );
 
         const user = {
             id: newUser.rows[0].id,
             email: newUser.rows[0].email,
             displayName: newUser.rows[0].display_name,
+            handle: newUser.rows[0].handle,
             createdAt: newUser.rows[0].created_at
         };
 
@@ -87,6 +109,8 @@ router.post('/register', async (req, res) => {
         });
     }
 });
+
+module.exports = router;
 
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
@@ -122,6 +146,7 @@ router.post('/login', async (req, res) => {
             email: row.email,
             passwordHash: row.password_hash,
             privateProfile: row.private_profile,
+            handle: row.handle,
             displayName: row.display_name,
             createdAt: row.created_at
         };
@@ -147,6 +172,7 @@ router.post('/login', async (req, res) => {
             user: {
                 id: user.id,
                 email: user.email,
+                handle: user.handle,
                 displayName: user.displayName
             },
             token
