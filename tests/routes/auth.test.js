@@ -30,16 +30,16 @@ describe('Auth routes', () => {
 
             expect(response.statusCode).toBe(201);
 
-            expect(response.body.user).toEqual(
-                expect.objectContaining({
-                    email: 'test@example.com',
-                    handle: 'test_user',
-                    displayName: 'test_user'
-                })
-            );
+            expect(response.body.user).toEqual({
+                id: expect.any(String),
+                handle: 'test_user',
+                displayName: 'test_user',
+                profilePictureUrl: null
+            });
 
             expect(response.body.user).not.toHaveProperty('password_hash');
             expect(response.body.user).not.toHaveProperty('passwordHash');
+            expect(response.body.user).not.toHaveProperty('email');
             expect(response.body.token).toEqual(expect.any(String));
         });
 
@@ -218,9 +218,9 @@ describe('Auth routes', () => {
 
             expect(response.body.user).toEqual({
                 id: user.id,
-                email: 'test@example.com',
+                handle: 'test_user',
                 displayName: 'test_user',
-                handle: 'test_user'
+                profilePictureUrl: null
             });
 
             expect(response.body.token).toEqual(expect.any(String));
@@ -266,7 +266,7 @@ describe('Auth routes', () => {
             expect(decoded.id).toBe(user.id);
         });
 
-        test('does not return the password hash', async () => {
+        test('does not return sensitive or unnecessary user fields', async () => {
             const response = await request(app)
                 .post('/auth/login')
                 .send({
@@ -276,6 +276,9 @@ describe('Auth routes', () => {
 
             expect(response.body.user).not.toHaveProperty('password_hash');
             expect(response.body.user).not.toHaveProperty('passwordHash');
+            expect(response.body.user).not.toHaveProperty('email');
+            expect(response.body.user).not.toHaveProperty('createdAt');
+            expect(response.body.user).not.toHaveProperty('privateProfile');
         });
     });
 });

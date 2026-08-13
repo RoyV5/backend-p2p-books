@@ -1,13 +1,15 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email TEXT UNIQUE NOT NULL,
+    email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
-    private_profile BOOLEAN NOT NULL DEFAULT FALSE,
+    handle TEXT NOT NULL UNIQUE,
     display_name TEXT NOT NULL,
-    handle TEXT UNIQUE NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    private_profile BOOLEAN NOT NULL DEFAULT FALSE,
+    profile_picture_path TEXT,
+    description TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS books (

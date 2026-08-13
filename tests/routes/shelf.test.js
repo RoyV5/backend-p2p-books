@@ -48,13 +48,15 @@ describe('Shelf routes', () => {
             `INSERT INTO users (
                 email,
                 password_hash,
+                handle,
                 display_name
             )
-            VALUES ($1, $2, $3)
-            RETURNING id, email, display_name`,
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, email, handle, display_name`,
             [
                 'test@example.com',
                 'not-a-real-password-hash',
+                'Test_User',
                 'Test User'
             ]
         );
@@ -247,13 +249,15 @@ describe('Shelf routes', () => {
                 `INSERT INTO users (
                     email,
                     password_hash,
+                    handle,
                     display_name
                 )
-                VALUES ($1, $2, $3)
+                VALUES ($1, $2, $3, $4)
                 RETURNING id`,
                 [
                     'other@example.com',
                     'not-a-real-password-hash',
+                    'Other_User',
                     'Other User'
                 ]
             );

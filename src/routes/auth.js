@@ -2,6 +2,8 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../config/db');
+const supabase = require('../config/supabase');
+
 const {
     isValidEmail,
     isValidPassword,
@@ -10,6 +12,19 @@ const {
 } = require('../utils/validation');
 
 const router = express.Router();
+
+function getProfilePictureUrl(path) {
+    if (!path) {
+        return null;
+    }
+
+    const { data } = supabase
+        .storage
+        .from(process.env.SUPABASE_STORAGE_BUCKET)
+        .getPublicUrl(path);
+
+    return data.publicUrl;
+}
 
 router.post('/register', async (req, res) => {
     const { email, password, handle } = req.body;
@@ -74,7 +89,11 @@ router.post('/register', async (req, res) => {
                 handle
             )
             VALUES ($1, $2, $3, $4)
-            RETURNING id, email, display_name, handle, created_at`,
+            RETURNING
+                id,
+                handle,
+                display_name,
+                profile_picture_path`,
             [
                 email,
                 passwordHash,
@@ -83,12 +102,15 @@ router.post('/register', async (req, res) => {
             ]
         );
 
+        const row = newUser.rows[0];
+
         const user = {
-            id: newUser.rows[0].id,
-            email: newUser.rows[0].email,
-            displayName: newUser.rows[0].display_name,
-            handle: newUser.rows[0].handle,
-            createdAt: newUser.rows[0].created_at
+            id: row.id,
+            handle: row.handle,
+            displayName: row.display_name,
+            profilePictureUrl: getProfilePictureUrl(
+                row.profile_picture_path
+            )
         };
 
         const token = jwt.sign(
@@ -104,13 +126,12 @@ router.post('/register', async (req, res) => {
 
     } catch (err) {
         console.error('Register error:', err.message);
+
         res.status(500).json({
             error: 'Server error during registration'
         });
     }
 });
-
-module.exports = router;
 
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
@@ -129,7 +150,14 @@ router.post('/login', async (req, res) => {
 
     try {
         const result = await db.query(
-            'SELECT * FROM users WHERE email = $1',
+            `SELECT
+                id,
+                password_hash,
+                handle,
+                display_name,
+                profile_picture_path
+             FROM users
+             WHERE email = $1`,
             [email]
         );
 
@@ -141,19 +169,9 @@ router.post('/login', async (req, res) => {
 
         const row = result.rows[0];
 
-        const user = {
-            id: row.id,
-            email: row.email,
-            passwordHash: row.password_hash,
-            privateProfile: row.private_profile,
-            handle: row.handle,
-            displayName: row.display_name,
-            createdAt: row.created_at
-        };
-
         const isMatch = await bcrypt.compare(
             password,
-            user.passwordHash
+            row.password_hash
         );
 
         if (!isMatch) {
@@ -162,6 +180,15 @@ router.post('/login', async (req, res) => {
             });
         }
 
+        const user = {
+            id: row.id,
+            handle: row.handle,
+            displayName: row.display_name,
+            profilePictureUrl: getProfilePictureUrl(
+                row.profile_picture_path
+            )
+        };
+
         const token = jwt.sign(
             { id: user.id },
             process.env.JWT_SECRET,
@@ -169,17 +196,13 @@ router.post('/login', async (req, res) => {
         );
 
         res.json({
-            user: {
-                id: user.id,
-                email: user.email,
-                handle: user.handle,
-                displayName: user.displayName
-            },
+            user,
             token
         });
 
     } catch (err) {
-        console.log('Login error', err.message);
+        console.error('Login error:', err.message);
+
         res.status(500).json({
             error: 'Server error during login'
         });
