@@ -209,4 +209,55 @@ router.post('/login', async (req, res) => {
     }
 });
 
+const auth = require('../middleware/auth');
+
+// GET /api/auth/me
+router.get('/me', auth, async (req, res) => {
+    try {
+        const result = await db.query(
+            `SELECT
+                id,
+                handle,
+                display_name,
+                profile_picture_path
+             FROM users
+             WHERE id = $1`,
+            [req.user.id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: 'User not found'
+            });
+        }
+
+        const user = result.rows[0];
+
+        let profilePictureUrl = null;
+
+        if (user.profile_picture_path) {
+            const { data } = supabase
+                .storage
+                .from(process.env.SUPABASE_STORAGE_BUCKET)
+                .getPublicUrl(user.profile_picture_path);
+
+            profilePictureUrl = data.publicUrl;
+        }
+
+        res.json({
+            id: user.id,
+            handle: user.handle,
+            displayName: user.display_name,
+            profilePictureUrl
+        });
+
+    } catch (err) {
+        console.error('Get current user error:', err.message);
+
+        res.status(500).json({
+            error: 'Error retrieving user'
+        });
+    }
+});
+
 module.exports = router;
