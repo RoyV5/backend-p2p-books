@@ -6,6 +6,7 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth');
 const shelfRoutes = require('./routes/shelf');
 const settingsRoutes = require('./routes/settings')
+const searchRoutes = require('./routes/search')
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -18,5 +19,6 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);   
 app.use('/api/shelf', shelfRoutes);  
 app.use('/api/settings', settingsRoutes)
+app.use('/api/search', searchRoutes)
 
 module.exports = app;
