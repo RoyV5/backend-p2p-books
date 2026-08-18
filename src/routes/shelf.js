@@ -3,6 +3,7 @@ const db = require('../config/db');
 const auth = require('../middleware/auth');
 const getBookData = require('../services/fetchingService');
 const isbn = require('../middleware/isbn');
+const { mapBook } = require('../mappers/bookMapper');
 
 const router = express.Router();
 
@@ -71,7 +72,7 @@ router.post('/', isbn, auth, async (req, res) => {
             });
         }
 
-        res.status(201).json(book);
+        res.status(201).json(mapBook(book));
 
     } catch (err) {
         console.error('Add book error:', err.message);
@@ -103,7 +104,7 @@ router.get('/', auth, async (req, res) => {
             [userId]
         );
 
-        res.json(result.rows);
+        res.json(result.rows.map(mapBook));
 
     } catch (err) {
         console.error('Get shelf error:', err.message);

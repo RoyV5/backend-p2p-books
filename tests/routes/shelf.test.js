@@ -31,6 +31,8 @@ describe('Shelf routes', () => {
     let user;
     let token;
 
+    // Shape returned by the fetching service / stored in the DB
+    // (snake_case, matches the `books` table columns).
     const book = {
         isbn: '9780140449266',
         title: 'The Odyssey',
@@ -41,6 +43,19 @@ describe('Shelf routes', () => {
         publisher: 'Penguin Classics',
         published_year: 2003,
         language: 'eng'
+    };
+
+    // Shape returned by the API (camelCase domain representation).
+    const bookResponse = {
+        isbn: book.isbn,
+        title: book.title,
+        authors: book.authors,
+        description: book.description,
+        pageCount: book.page_count,
+        coverUrl: book.cover_url,
+        publisher: book.publisher,
+        publishedYear: book.published_year,
+        language: book.language
     };
 
     beforeEach(async () => {
@@ -80,7 +95,7 @@ describe('Shelf routes', () => {
 
             expect(response.statusCode).toBe(201);
 
-            expect(response.body).toEqual(book);
+            expect(response.body).toEqual(bookResponse);
 
             const result = await db.query(
                 `SELECT ub.user_id, ub.isbn

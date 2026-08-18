@@ -2,7 +2,8 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../config/db');
-const supabase = require('../config/supabase');
+
+const { mapUser } = require('../mappers/userMapper');
 
 const {
     isValidEmail,
@@ -12,19 +13,6 @@ const {
 } = require('../utils/validation');
 
 const router = express.Router();
-
-function getProfilePictureUrl(path) {
-    if (!path) {
-        return null;
-    }
-
-    const { data } = supabase
-        .storage
-        .from(process.env.SUPABASE_STORAGE_BUCKET)
-        .getPublicUrl(path);
-
-    return data.publicUrl;
-}
 
 router.post('/register', async (req, res) => {
     const { email, password, handle } = req.body;
@@ -102,16 +90,7 @@ router.post('/register', async (req, res) => {
             ]
         );
 
-        const row = newUser.rows[0];
-
-        const user = {
-            id: row.id,
-            handle: row.handle,
-            displayName: row.display_name,
-            profilePictureUrl: getProfilePictureUrl(
-                row.profile_picture_path
-            )
-        };
+        const user = mapUser(newUser.rows[0]);
 
         const token = jwt.sign(
             { id: user.id },
@@ -180,14 +159,7 @@ router.post('/login', async (req, res) => {
             });
         }
 
-        const user = {
-            id: row.id,
-            handle: row.handle,
-            displayName: row.display_name,
-            profilePictureUrl: getProfilePictureUrl(
-                row.profile_picture_path
-            )
-        };
+        const user = mapUser(row);
 
         const token = jwt.sign(
             { id: user.id },
@@ -231,25 +203,7 @@ router.get('/me', auth, async (req, res) => {
             });
         }
 
-        const user = result.rows[0];
-
-        let profilePictureUrl = null;
-
-        if (user.profile_picture_path) {
-            const { data } = supabase
-                .storage
-                .from(process.env.SUPABASE_STORAGE_BUCKET)
-                .getPublicUrl(user.profile_picture_path);
-
-            profilePictureUrl = data.publicUrl;
-        }
-
-        res.json({
-            id: user.id,
-            handle: user.handle,
-            displayName: user.display_name,
-            profilePictureUrl
-        });
+        res.json(mapUser(result.rows[0]));
 
     } catch (err) {
         console.error('Get current user error:', err.message);

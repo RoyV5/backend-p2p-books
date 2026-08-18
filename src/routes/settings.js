@@ -4,6 +4,9 @@ const auth = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const supabase = require('../config/supabase');
 
+const { mapUser } = require('../mappers/userMapper');
+const { getProfilePictureUrl } = require('../utils/storage');
+
 const {
     isValidHandle,
     isValidDisplayName,
@@ -36,26 +39,7 @@ router.get('/', async (req, res) => {
             });
         }
 
-        const user = result.rows[0];
-
-        let profilePictureUrl = null;
-
-        if (user.profile_picture_path) {
-            const { data } = supabase
-                .storage
-                .from(process.env.SUPABASE_STORAGE_BUCKET)
-                .getPublicUrl(user.profile_picture_path);
-
-            profilePictureUrl = data.publicUrl;
-        }
-
-        res.json({
-            handle: user.handle,
-            displayName: user.display_name,
-            privateProfile: user.private_profile,
-            description: user.description,
-            profilePictureUrl,
-        });
+        res.json(mapUser(result.rows[0]));
 
     } catch (err) {
         console.error('Get settings error:', err.message);
@@ -267,13 +251,8 @@ router.put(
                 }
             }
 
-            const { data } = supabase
-                .storage
-                .from(process.env.SUPABASE_STORAGE_BUCKET)
-                .getPublicUrl(filePath);
-
             res.status(200).json({
-                profilePictureUrl: data.publicUrl
+                profilePictureUrl: getProfilePictureUrl(filePath)
             });
 
         } catch (err) {
