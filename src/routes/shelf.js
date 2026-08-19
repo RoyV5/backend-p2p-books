@@ -4,6 +4,7 @@ const auth = require('../middleware/auth');
 const getBookData = require('../services/fetchingService');
 const isbn = require('../middleware/isbn');
 const { mapBook } = require('../mappers/bookMapper');
+const { mapUser } = require('../mappers/userMapper');
 
 const router = express.Router();
 
@@ -75,6 +76,13 @@ router.post('/', isbn, auth, async (req, res) => {
         res.status(201).json(mapBook(book));
 
     } catch (err) {
+        if (err.code === 'BOOK_NOT_FOUND') {
+            return res.status(404).json({
+                error: err.message,
+                code: err.code
+            });
+        }
+
         console.error('Add book error:', err.message);
         res.status(500).json({ error: 'Error adding book' });
     }
@@ -136,6 +144,77 @@ router.delete('/:isbn', auth, async (req, res) => {
     } catch (err) {
         console.error('Delete book error:', err.message);
         res.status(500).json({ error: 'Error removing book' });
+    }
+});
+
+router.get('/:userId', auth, async (req, res) => {
+    const { userId } = req.params;
+    const requesterId = req.user.id;
+
+    try {
+        const userResult = await db.query(
+            `SELECT
+                id,
+                handle,
+                display_name,
+                description,
+                profile_picture_path,
+                private_profile
+             FROM users
+             WHERE id = $1`,
+            [userId]
+        );
+
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({
+                error: 'User not found'
+            });
+        }
+
+        const row = userResult.rows[0];
+        const isOwner = row.id === requesterId;
+        const isPrivate = row.private_profile;
+        const canViewBooks = isOwner || !isPrivate;
+
+        const user = mapUser(row);
+        delete user.privateProfile;
+
+        if (!canViewBooks) {
+            return res.json({
+                user,
+                isPrivate,
+                books: null
+            });
+        }
+
+        const booksResult = await db.query(
+            `SELECT
+                b.isbn,
+                b.title,
+                b.authors,
+                b.description,
+                b.page_count,
+                b.cover_url,
+                b.publisher,
+                b.published_year,
+                b.language,
+                b.created_at
+             FROM books b
+             JOIN user_books ub ON ub.isbn = b.isbn
+             WHERE ub.user_id = $1
+             ORDER BY ub.created_at DESC`,
+            [row.id]
+        );
+
+        res.json({
+            user,
+            isPrivate,
+            books: booksResult.rows.map(mapBook)
+        });
+
+    } catch (err) {
+        console.error('Get user shelf error:', err.message);
+        res.status(500).json({ error: 'Error retrieving shelf' });
     }
 });
 

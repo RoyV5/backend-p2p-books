@@ -8,7 +8,7 @@ const openLibraryURL =
 
 const getWithRetry = require('../utils/retryHelper');
 const extractPublishedYear = require('../utils/date');
-const normalizeTitle = require('../utils/title');
+const { normalizeTitle, titlesMatch } = require('../utils/title');
 
 async function getOpenLibraryMetadata(isbn) {
     const response = await axios.get(
@@ -37,7 +37,10 @@ async function getOpenLibraryMetadata(isbn) {
         isbn,
         title: info.title ?? null,
         authors: info.authors?.map(author => author.name) ?? [],
-        description: details.description?.value ?? null,
+        description:
+            typeof details.description === 'string'
+                ? details.description
+                : details.description?.value ?? null,
         page_count:
             info.number_of_pages ??
             details.number_of_pages ??
@@ -116,27 +119,11 @@ async function getOpenLibraryCover(isbn) {
 }
 
 
-function titlesMatch(openLibraryBook, googleBook) {
-    if (!openLibraryBook?.title || !googleBook?.title) {
-        return false;
-    }
-
-    return (
-        openLibraryBook.title.trim().toLowerCase() ===
-        googleBook.title.trim().toLowerCase()
-    );
-}
-
-
 function reconcileBookData(openLibraryBook, googleBook) {
-    // If the providers disagree about the title,
-    // trust OpenLibrary completely.
-    if (!titlesMatch(openLibraryBook, googleBook)) {
+    if (!titlesMatch(openLibraryBook.title, googleBook.title)) {
         return openLibraryBook;
     }
 
-    // Providers agree. Prefer OpenLibrary values,
-    // using Google Books to fill missing information.
     return {
         isbn: openLibraryBook.isbn,
 
@@ -148,28 +135,28 @@ function reconcileBookData(openLibraryBook, googleBook) {
                 : openLibraryBook.authors,
 
         description:
-            openLibraryBook.description ??
-            googleBook.description,
+            googleBook.description ??
+            openLibraryBook.description,
 
         page_count:
-            openLibraryBook.page_count ??
-            googleBook.page_count,
+            googleBook.page_count ??
+            openLibraryBook.page_count,
 
         cover_url:
             googleBook.cover_url ??
             openLibraryBook.cover_url,
 
         publisher:
-            openLibraryBook.publisher ??
-            googleBook.publisher,
+            googleBook.publisher ??
+            openLibraryBook.publisher,
 
         published_date:
             googleBook.published_date ??
             openLibraryBook.published_date,
 
         language:
-            openLibraryBook.language ??
-            googleBook.language
+            googleBook.language ??
+            openLibraryBook.language
     };
 }
 
@@ -197,44 +184,52 @@ async function getBookData(isbn) {
     let googleBook = null;
 
     try {
-        openLibraryBook =
-            await getOpenLibraryMetadata(isbn);
-    } catch (err) {
+        openLibraryBook = await getOpenLibraryMetadata(isbn);
         console.log(
-            `OpenLibrary lookup failed for ${isbn}`
+            `OpenLibrary: found "${openLibraryBook.title}" for ${isbn}`
         );
+    } catch (err) {
+        console.log(`OpenLibrary: not found for ${isbn}`);
     }
 
     try {
-        googleBook =
-            await getGoogleBook(isbn);
-    } catch (err) {
-        console.log(err.message);
+        googleBook = await getGoogleBook(isbn);
         console.log(
-            `Google Books lookup failed for ${isbn}`
+            `Google Books: found "${googleBook.title}" for ${isbn}`
         );
+    } catch (err) {
+        console.log(`Google Books: not found for ${isbn}`);
     }
 
     if (!openLibraryBook && !googleBook) {
-        throw new Error(`Book not found: ${isbn}`);
+        const err = new Error(`Book not found: ${isbn}`);
+        err.code = 'BOOK_NOT_FOUND';
+        throw err;
     }
 
-    // If OpenLibrary failed, Google Books is all we have.
+    let book;
+
     if (!openLibraryBook) {
-        return compileBook(googleBook);
+        // OpenLibrary failed; Google Books is all we have.
+        book = compileBook(googleBook);
+    } else if (!googleBook) {
+        // Google Books failed; use OpenLibrary alone.
+        book = compileBook(openLibraryBook);
+    } else {
+        const reconciledBook = reconcileBookData(
+            openLibraryBook,
+            googleBook
+        );
+
+        book = compileBook(reconciledBook);
     }
 
-    // If Google Books failed, use OpenLibrary alone.
-    if (!googleBook) {
-        return compileBook(openLibraryBook);
-    }
-
-    const reconciledBook = reconcileBookData(
-        openLibraryBook,
-        googleBook
+    console.log(
+        `Compiled book for ${isbn}:`,
+        JSON.stringify(book)
     );
 
-    return compileBook(reconciledBook);
+    return book;
 }
 
 

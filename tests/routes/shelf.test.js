@@ -208,6 +208,53 @@ describe('Shelf routes', () => {
             expect(getBookData).not.toHaveBeenCalled();
         });
 
+        test(
+            'returns a 404 with a BOOK_NOT_FOUND code ' +
+            'when the book cannot be found by either provider',
+            async () => {
+                const notFoundError = new Error(
+                    `Book not found: ${book.isbn}`
+                );
+                notFoundError.code = 'BOOK_NOT_FOUND';
+
+                getBookData.mockRejectedValue(notFoundError);
+
+                const response = await request(app)
+                    .post('/shelf')
+                    .set('Authorization', `Bearer ${token}`)
+                    .send({
+                        isbn: book.isbn
+                    });
+
+                expect(response.statusCode).toBe(404);
+                expect(response.body).toEqual({
+                    error: `Book not found: ${book.isbn}`,
+                    code: 'BOOK_NOT_FOUND'
+                });
+            }
+        );
+
+        test(
+            'returns a generic 500 for an unexpected fetching error',
+            async () => {
+                getBookData.mockRejectedValue(
+                    new Error('ECONNREFUSED')
+                );
+
+                const response = await request(app)
+                    .post('/shelf')
+                    .set('Authorization', `Bearer ${token}`)
+                    .send({
+                        isbn: book.isbn
+                    });
+
+                expect(response.statusCode).toBe(500);
+                expect(response.body).toEqual({
+                    error: 'Error adding book'
+                });
+            }
+        );
+
         test('rejects an unauthenticated request', async () => {
             getBookData.mockResolvedValue(book);
 
@@ -369,6 +416,136 @@ describe('Shelf routes', () => {
         test('rejects an unauthenticated request', async () => {
             const response = await request(app)
                 .delete(`/shelf/${book.isbn}`);
+
+            expect(response.statusCode).toBe(401);
+        });
+    });
+
+    describe('GET /shelf/:userId', () => {
+        let otherUser;
+
+        beforeEach(async () => {
+            const otherUserResult = await db.query(
+                `INSERT INTO users (
+                    email,
+                    password_hash,
+                    handle,
+                    display_name,
+                    private_profile
+                )
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id, handle, display_name`,
+                [
+                    'other@example.com',
+                    'not-a-real-password-hash',
+                    'Other_User',
+                    'Other User',
+                    false
+                ]
+            );
+
+            otherUser = otherUserResult.rows[0];
+
+            await db.query(
+                `INSERT INTO books (
+                    isbn,
+                    title,
+                    authors
+                )
+                VALUES ($1, $2, $3)`,
+                [
+                    book.isbn,
+                    book.title,
+                    book.authors
+                ]
+            );
+
+            await db.query(
+                `INSERT INTO user_books (user_id, isbn)
+                 VALUES ($1, $2)`,
+                [otherUser.id, book.isbn]
+            );
+        });
+
+        test('returns a public user shelf', async () => {
+            const response = await request(app)
+                .get(`/shelf/${otherUser.id}`)
+                .set('Authorization', `Bearer ${token}`);
+
+            expect(response.statusCode).toBe(200);
+            expect(response.body.isPrivate).toBe(false);
+            expect(response.body.user).toEqual({
+                id: otherUser.id,
+                handle: otherUser.handle,
+                displayName: otherUser.display_name,
+                description: null,
+                profilePictureUrl: null
+            });
+            expect(response.body.books).toHaveLength(1);
+            expect(response.body.books[0]).toEqual(
+                expect.objectContaining({
+                    isbn: book.isbn,
+                    title: book.title
+                })
+            );
+        });
+
+        test('hides book contents for a private profile', async () => {
+            await db.query(
+                `UPDATE users
+                 SET private_profile = true
+                 WHERE id = $1`,
+                [otherUser.id]
+            );
+
+            const response = await request(app)
+                .get(`/shelf/${otherUser.id}`)
+                .set('Authorization', `Bearer ${token}`);
+
+            expect(response.statusCode).toBe(200);
+            expect(response.body.isPrivate).toBe(true);
+            expect(response.body.books).toBeNull();
+            expect(response.body.user.handle).toBe(otherUser.handle);
+        });
+
+        test('lets the owner view their own private shelf', async () => {
+            await db.query(
+                `UPDATE users
+                 SET private_profile = true
+                 WHERE id = $1`,
+                [otherUser.id]
+            );
+
+            const ownerToken = createToken(otherUser.id);
+
+            const response = await request(app)
+                .get(`/shelf/${otherUser.id}`)
+                .set('Authorization', `Bearer ${ownerToken}`);
+
+            expect(response.statusCode).toBe(200);
+            expect(response.body.isPrivate).toBe(true);
+            expect(response.body.books).toHaveLength(1);
+        });
+
+        test('never leaks the raw privateProfile field', async () => {
+            const response = await request(app)
+                .get(`/shelf/${otherUser.id}`)
+                .set('Authorization', `Bearer ${token}`);
+
+            expect(response.body.user).not.toHaveProperty('privateProfile');
+        });
+
+        test('returns 404 for a nonexistent user', async () => {
+            const response = await request(app)
+                .get('/shelf/00000000-0000-0000-0000-000000000000')
+                .set('Authorization', `Bearer ${token}`);
+
+            expect(response.statusCode).toBe(404);
+        });
+
+        test('rejects an unauthenticated request', async () => {
+            const response = await request(app)
+                .get(`/shelf/${otherUser.id}`);
 
             expect(response.statusCode).toBe(401);
         });
