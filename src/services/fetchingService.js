@@ -68,7 +68,7 @@ async function getGoogleBook(isbn) {
                 key: process.env.GOOGLE_API_KEY,
             },
         },
-        2
+        3
     );
 
     const volume = response.data.items?.[0];
