@@ -66,7 +66,6 @@ async function getGoogleBook(isbn) {
             params: {
                 q: `isbn:${isbn}`,
                 key: process.env.GOOGLE_API_KEY,
-                projection: 'lite',
             },
         },
         2

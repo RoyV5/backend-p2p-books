@@ -1,42 +1,55 @@
-const axios = require('axios')
+const axios = require('axios');
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// 503 (Service Unavailable) and 429 (Too Many Requests) are
-// both transient, retry-appropriate failures — the API is
-// telling us to back off and try again, not that the request
-// itself is wrong.
-const RETRYABLE_STATUSES = new Set([429, 503]);
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 
 function getBackoffMs(err, attempt) {
   const retryAfterHeader = err.response?.headers?.['retry-after'];
 
   if (retryAfterHeader) {
-    // Retry-After is usually a number of seconds, but can also
-    // be an HTTP-date string. Only trust it when it parses to a
-    // finite number; otherwise fall back to our own backoff
-    // rather than risk sleeping for NaN/0ms.
     const seconds = Number(retryAfterHeader);
-
     if (Number.isFinite(seconds)) {
       return seconds * 1000;
     }
   }
 
-  return 250 * 2 ** attempt;
+  // Base interval: 1s, 2s, 4s... + jitter
+  const baseDelay = 1000 * 2 ** attempt;
+  const jitter = Math.random() * 500;
+  
+  return baseDelay + jitter;
 }
 
-async function getWithRetry(url, config, retries = 2) {
-  for (let attempt = 0; attempt <= retries; attempt++) {
+async function getWithRetry(url, config = {}, maxRetries = 3) {
+  const mergedConfig = {
+    ...config,
+    headers: {
+      'Connection': 'close',
+      ...(config.headers || {})
+    }
+  };
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await axios.get(url, config);
+      return await axios.get(url, mergedConfig);
     } catch (err) {
       const status = err.response?.status;
+      const isGoogleBackendFailure = err.response?.data?.error?.errors?.[0]?.reason === 'backendFailed';
+      const isNetworkError = !err.response; 
+      const isRetryableStatus = RETRYABLE_STATUSES.has(status) || isGoogleBackendFailure;
 
-      if (!RETRYABLE_STATUSES.has(status) || attempt === retries) {
+      const shouldRetry = (isNetworkError || isRetryableStatus) && attempt < maxRetries;
+
+      if (!shouldRetry) {
         throw err;
       }
+
+      // Log fires BEFORE sleep, explicitly showing the retry attempt number
+      const nextAttempt = attempt + 1;
+      console.warn(`[Retry Helper] 503/Network glitch on ${url}. Executing retry ${nextAttempt}/${maxRetries}...`);
 
       await sleep(getBackoffMs(err, attempt));
     }
