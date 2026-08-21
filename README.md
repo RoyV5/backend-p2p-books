@@ -2,7 +2,7 @@
 
 A Node.js and Express API service that aggregates book metadata from public APIs, manages database persistence, and handles search queries.
 
-*Mobile Repository: [Mobile App Repository Link](https://github.com/RoyV5/mobile-p2p-books)*
+*Mobile Repository: [mobile-p2p-books](https://github.com/RoyV5/mobile-p2p-books)*
 
 ## Overview
 
