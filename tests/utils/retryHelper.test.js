@@ -11,6 +11,7 @@ function httpError(status, headers = {}) {
 
 describe('getWithRetry', () => {
     let setTimeoutSpy;
+    let mathRandomSpy;
 
     beforeEach(() => {
         jest.resetAllMocks();
@@ -24,10 +25,17 @@ describe('getWithRetry', () => {
                 callback();
                 return 0;
             });
+
+        // Mock Math.random to always return 0 to remove the jitter 
+        // during tests, making the backoff assertions deterministic.
+        mathRandomSpy = jest
+            .spyOn(Math, 'random')
+            .mockReturnValue(0);
     });
 
     afterEach(() => {
         setTimeoutSpy.mockRestore();
+        mathRandomSpy.mockRestore();
     });
 
     test('returns the response on first success without retrying', async () => {
@@ -100,7 +108,10 @@ describe('getWithRetry', () => {
         await getWithRetry('https://example.com', {}, 2);
 
         const delays = setTimeoutSpy.mock.calls.map(call => call[1]);
-        expect(delays).toEqual([250, 500]);
+        
+        // Attempt 0 = 1000 * 2^0 + 0 (jitter) = 1000
+        // Attempt 1 = 1000 * 2^1 + 0 (jitter) = 2000
+        expect(delays).toEqual([1000, 2000]);
     });
 
     test('honors a numeric Retry-After header over the default backoff', async () => {
@@ -127,9 +138,10 @@ describe('getWithRetry', () => {
 
             await getWithRetry('https://example.com', {});
 
+            // Falls back to baseDelay (1000 * 2^0) + jitter (0) = 1000
             expect(setTimeoutSpy).toHaveBeenCalledWith(
                 expect.any(Function),
-                250
+                1000
             );
         }
     );

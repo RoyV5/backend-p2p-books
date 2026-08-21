@@ -10,6 +10,11 @@ const getWithRetry = require('../utils/retryHelper');
 const extractPublishedYear = require('../utils/date');
 const { normalizeTitle, titlesMatch } = require('../utils/title');
 
+function sanitizeCoverUrl(rawUrl) {
+    if (!rawUrl) return null;
+    return rawUrl.replace(/^http:\/\//i, 'https://');
+}
+
 async function getOpenLibraryMetadata(isbn) {
     const response = await axios.get(
         `${openLibraryURL}${isbn}.json`
@@ -79,7 +84,7 @@ async function getGoogleBook(isbn) {
 
     const info = volume.volumeInfo;
 
-    const googleCover =
+    const rawGoogleCover =
         info.imageLinks?.extraLarge ??
         info.imageLinks?.large ??
         info.imageLinks?.medium ??
@@ -94,7 +99,7 @@ async function getGoogleBook(isbn) {
         authors: info.authors ?? [],
         description: info.description ?? null,
         page_count: info.pageCount || null,
-        cover_url: googleCover,
+        cover_url: sanitizeCoverUrl(rawGoogleCover),
         publisher: info.publisher ?? null,
         published_date: info.publishedDate ?? null,
         language: info.language ?? null
@@ -168,7 +173,7 @@ function compileBook(book) {
         authors: book.authors ?? [],
         description: book.description ?? null,
         page_count: book.page_count ?? null,
-        cover_url: book.cover_url ?? null,
+        cover_url: sanitizeCoverUrl(book.cover_url),
         publisher: book.publisher ?? null,
         published_year: extractPublishedYear(
             book.published_date

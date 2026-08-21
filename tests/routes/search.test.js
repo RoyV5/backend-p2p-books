@@ -50,6 +50,36 @@ async function createUser({
     return result.rows[0];
 }
 
+async function createBook({
+    isbn,
+    title,
+    authors = ['Author Name'],
+    coverUrl = null,
+    publisher = null,
+    publishedYear = null
+}) {
+    await db.query(
+        `INSERT INTO books (
+            isbn,
+            title,
+            authors,
+            cover_url,
+            publisher,
+            published_year
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)`,
+        [isbn, title, authors, coverUrl, publisher, publishedYear]
+    );
+}
+
+async function addToShelf(userId, isbn) {
+    await db.query(
+        `INSERT INTO user_books (user_id, isbn)
+         VALUES ($1, $2)`,
+        [userId, isbn]
+    );
+}
+
 describe('Search routes', () => {
     const app = createApp();
 
@@ -263,6 +293,365 @@ describe('Search routes', () => {
 
             expect(response.statusCode).toBe(200);
             expect(response.body.length).toBe(20);
+        });
+    });
+
+    describe('GET /search/books', () => {
+        test('requires authentication', async () => {
+            const response = await request(app)
+                .get('/search/books')
+                .query({ q: 'hobbit' });
+
+            expect(response.statusCode).toBe(401);
+        });
+
+        test('returns an empty array for a query under 2 characters', async () => {
+            const response = await request(app)
+                .get('/search/books')
+                .set('Authorization', `Bearer ${token}`)
+                .query({ q: 'h' });
+
+            expect(response.statusCode).toBe(200);
+            expect(response.body).toEqual([]);
+        });
+
+        test('matches on title and returns owner info', async () => {
+            const owner = await createUser({
+                email: 'owner@example.com',
+                handle: 'book_owner',
+                displayName: 'Book Owner'
+            });
+
+            await createBook({
+                isbn: '9780547928227',
+                title: 'The Hobbit',
+                authors: ['J.R.R. Tolkien'],
+                coverUrl: 'https://example.com/hobbit.jpg',
+                publisher: 'Houghton Mifflin',
+                publishedYear: 1937
+            });
+
+            await addToShelf(owner.id, '9780547928227');
+
+            const response = await request(app)
+                .get('/search/books')
+                .set('Authorization', `Bearer ${token}`)
+                .query({ q: 'hobbit' });
+
+            expect(response.statusCode).toBe(200);
+            expect(response.body).toEqual([
+                {
+                    isbn: '9780547928227',
+                    title: 'The Hobbit',
+                    authors: ['J.R.R. Tolkien'],
+                    coverUrl: 'https://example.com/hobbit.jpg',
+                    publisher: 'Houghton Mifflin',
+                    publishedYear: 1937,
+                    owner: {
+                        id: owner.id,
+                        handle: owner.handle,
+                        displayName: owner.display_name,
+                        profilePictureUrl: null
+                    }
+                }
+            ]);
+        });
+
+        test(
+            'does not match on author (title-only search)',
+            async () => {
+                const owner = await createUser({
+                    email: 'owner2@example.com',
+                    handle: 'tolkien_fan',
+                    displayName: 'Tolkien Fan'
+                });
+
+                await createBook({
+                    isbn: '9780618640157',
+                    title: 'The Lord of the Rings',
+                    authors: ['J.R.R. Tolkien']
+                });
+
+                await addToShelf(owner.id, '9780618640157');
+
+                const response = await request(app)
+                    .get('/search/books')
+                    .set('Authorization', `Bearer ${token}`)
+                    .query({ q: 'tolkien' });
+
+                expect(response.statusCode).toBe(200);
+                expect(response.body).toEqual([]);
+            }
+        );
+
+        test('matches an ISBN-13 exactly', async () => {
+            const owner = await createUser({
+                email: 'owner2@example.com',
+                handle: 'isbn_owner',
+                displayName: 'ISBN Owner'
+            });
+
+            await createBook({
+                isbn: '9780618640157',
+                title: 'The Lord of the Rings'
+            });
+
+            await addToShelf(owner.id, '9780618640157');
+
+            const response = await request(app)
+                .get('/search/books')
+                .set('Authorization', `Bearer ${token}`)
+                .query({ q: '9780618640157' });
+
+            expect(response.statusCode).toBe(200);
+            expect(response.body).toHaveLength(1);
+            expect(response.body[0].isbn).toBe('9780618640157');
+        });
+
+        test('matches an ISBN-10 by canonicalizing to ISBN-13', async () => {
+            const owner = await createUser({
+                email: 'owner2b@example.com',
+                handle: 'isbn10_owner',
+                displayName: 'ISBN10 Owner'
+            });
+
+            // 054792822X is the ISBN-10 form of 9780547928227
+            // (verified via normalizeISBN, not hand-computed).
+            await createBook({
+                isbn: '9780547928227',
+                title: 'The Hobbit'
+            });
+
+            await addToShelf(owner.id, '9780547928227');
+
+            const response = await request(app)
+                .get('/search/books')
+                .set('Authorization', `Bearer ${token}`)
+                .query({ q: '054792822X' });
+
+            expect(response.statusCode).toBe(200);
+            expect(response.body).toHaveLength(1);
+            expect(response.body[0].isbn).toBe('9780547928227');
+        });
+
+        test(
+            'does not error on a query that merely looks ISBN-ish',
+            async () => {
+                const response = await request(app)
+                    .get('/search/books')
+                    .set('Authorization', `Bearer ${token}`)
+                    .query({ q: '1234567890' });
+
+                expect(response.statusCode).toBe(200);
+                expect(response.body).toEqual([]);
+            }
+        );
+
+        test('tolerates minor typos via trigram similarity', async () => {
+            const owner = await createUser({
+                email: 'owner3@example.com',
+                handle: 'typo_owner',
+                displayName: 'Typo Owner'
+            });
+
+            await createBook({
+                isbn: '9780547928227',
+                title: 'The Hobbit'
+            });
+
+            await addToShelf(owner.id, '9780547928227');
+
+            const response = await request(app)
+                .get('/search/books')
+                .set('Authorization', `Bearer ${token}`)
+                .query({ q: 'hobit' });
+
+            expect(response.statusCode).toBe(200);
+            expect(response.body).toHaveLength(1);
+        });
+
+        test(
+            'matches a single word against a longer, ' +
+            'multi-word title (regression: word_similarity, ' +
+            'not whole-string similarity)',
+            async () => {
+                const owner = await createUser({
+                    email: 'owner6@example.com',
+                    handle: 'tintin_owner',
+                    displayName: 'Tintin Owner'
+                });
+
+                await createBook({
+                    isbn: '9788426114044',
+                    title: 'Tintín: The Secret of the Unicorn'
+                });
+
+                await addToShelf(owner.id, '9788426114044');
+
+                const response = await request(app)
+                    .get('/search/books')
+                    .set('Authorization', `Bearer ${token}`)
+                    .query({ q: 'tintin' });
+
+                expect(response.statusCode).toBe(200);
+                expect(response.body).toHaveLength(1);
+            }
+        );
+
+        test(
+            'matches a near-miss single word against a ' +
+            'longer title',
+            async () => {
+                const owner = await createUser({
+                    email: 'owner7@example.com',
+                    handle: 'dostoevsky_owner',
+                    displayName: 'Dostoevsky Owner'
+                });
+
+                await createBook({
+                    isbn: '9780374528379',
+                    title: 'The Brothers Karamazov'
+                });
+
+                await addToShelf(owner.id, '9780374528379');
+
+                const response = await request(app)
+                    .get('/search/books')
+                    .set('Authorization', `Bearer ${token}`)
+                    .query({ q: 'karamalov' });
+
+                expect(response.statusCode).toBe(200);
+                expect(response.body).toHaveLength(1);
+            }
+        );
+
+        test('matches regardless of query casing', async () => {
+            const owner = await createUser({
+                email: 'owner4@example.com',
+                handle: 'case_owner',
+                displayName: 'Case Owner'
+            });
+
+            await createBook({
+                isbn: '9780547928227',
+                title: 'The Hobbit'
+            });
+
+            await addToShelf(owner.id, '9780547928227');
+
+            const response = await request(app)
+                .get('/search/books')
+                .set('Authorization', `Bearer ${token}`)
+                .query({ q: 'THE HOBBIT' });
+
+            expect(response.statusCode).toBe(200);
+            expect(response.body).toHaveLength(1);
+        });
+
+        test("excludes the requester's own copies", async () => {
+            await createBook({
+                isbn: '9780547928227',
+                title: 'The Hobbit'
+            });
+
+            await addToShelf(self.id, '9780547928227');
+
+            const response = await request(app)
+                .get('/search/books')
+                .set('Authorization', `Bearer ${token}`)
+                .query({ q: 'hobbit' });
+
+            expect(response.statusCode).toBe(200);
+            expect(response.body).toEqual([]);
+        });
+
+        test('excludes copies owned by private-profile users', async () => {
+            const privateOwner = await createUser({
+                email: 'private@example.com',
+                handle: 'private_owner',
+                displayName: 'Private Owner',
+                privateProfile: true
+            });
+
+            await createBook({
+                isbn: '9780547928227',
+                title: 'The Hobbit'
+            });
+
+            await addToShelf(privateOwner.id, '9780547928227');
+
+            const response = await request(app)
+                .get('/search/books')
+                .set('Authorization', `Bearer ${token}`)
+                .query({ q: 'hobbit' });
+
+            expect(response.statusCode).toBe(200);
+            expect(response.body).toEqual([]);
+        });
+
+        test(
+            'returns one result per owner when multiple ' +
+            'people own the same book',
+            async () => {
+                const ownerA = await createUser({
+                    email: 'ownerA@example.com',
+                    handle: 'owner_a',
+                    displayName: 'Owner A'
+                });
+
+                const ownerB = await createUser({
+                    email: 'ownerB@example.com',
+                    handle: 'owner_b',
+                    displayName: 'Owner B'
+                });
+
+                await createBook({
+                    isbn: '9780547928227',
+                    title: 'The Hobbit'
+                });
+
+                await addToShelf(ownerA.id, '9780547928227');
+                await addToShelf(ownerB.id, '9780547928227');
+
+                const response = await request(app)
+                    .get('/search/books')
+                    .set('Authorization', `Bearer ${token}`)
+                    .query({ q: 'hobbit' });
+
+                expect(response.statusCode).toBe(200);
+                expect(response.body).toHaveLength(2);
+
+                const ownerIds = response.body.map(
+                    (result) => result.owner.id
+                );
+
+                expect(ownerIds).toEqual(
+                    expect.arrayContaining([ownerA.id, ownerB.id])
+                );
+            }
+        );
+
+        test('does not return unrelated books', async () => {
+            const owner = await createUser({
+                email: 'owner5@example.com',
+                handle: 'unrelated_owner',
+                displayName: 'Unrelated Owner'
+            });
+
+            await createBook({
+                isbn: '9780547928227',
+                title: 'The Hobbit'
+            });
+
+            await addToShelf(owner.id, '9780547928227');
+
+            const response = await request(app)
+                .get('/search/books')
+                .set('Authorization', `Bearer ${token}`)
+                .query({ q: 'a treatise on quantum electrodynamics' });
+
+            expect(response.statusCode).toBe(200);
+            expect(response.body).toEqual([]);
         });
     });
 });

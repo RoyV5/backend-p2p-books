@@ -78,12 +78,27 @@ function googleNotFoundResponse() {
 }
 
 describe('getBookData', () => {
+    let setTimeoutSpy;
+
     beforeEach(() => {
         jest.resetAllMocks();
+
+        // Bypass setTimeout to prevent test timeouts during getWithRetry's 
+        // exponential backoff delays.
+        setTimeoutSpy = jest
+            .spyOn(global, 'setTimeout')
+            .mockImplementation((callback) => {
+                callback();
+                return 0;
+            });
 
         // Cover-existence check defaults to "exists" unless a
         // test overrides it; it isn't the focus of these tests.
         axios.head.mockResolvedValue({ status: 200 });
+    });
+
+    afterEach(() => {
+        setTimeoutSpy.mockRestore();
     });
 
     test(
