@@ -59,12 +59,14 @@ router.patch('/', async (req, res) => {
         privateProfile,
         description
     } = req.body;
-    console.log(req.body)
+    
+    console.log(req.body);
 
     const updates = [];
     const values = [];
 
     let normalizedHandle;
+    let cleanDescription;
 
     if (handle !== undefined) {
         if (!isValidHandle(handle)) {
@@ -91,8 +93,13 @@ router.patch('/', async (req, res) => {
     }
 
     if (description !== undefined) {
+        // Remove trailing whitespace/newlines and strictly cap at 100 characters
+        cleanDescription = description === null 
+            ? null 
+            : String(description).trimEnd().slice(0, 100);
+
         updates.push(`description = $${values.length + 1}`);
-        values.push(description);
+        values.push(cleanDescription);
     }
 
     if (privateProfile !== undefined) {
@@ -139,7 +146,7 @@ router.patch('/', async (req, res) => {
         }
 
         if (description !== undefined) {
-            updatedFields.description = description;
+            updatedFields.description = cleanDescription;
         }
 
         if (privateProfile !== undefined) {
