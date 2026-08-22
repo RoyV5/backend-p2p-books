@@ -7,7 +7,7 @@ const openLibraryURL =
     'http://openlibrary.org/api/volumes/brief/isbn/';
 
 const getWithRetry = require('../utils/retryHelper');
-const extractPublishedYear = require('../utils/date');
+const { extractPublishedYear } = require('../utils/date');
 const { normalizeTitle, titlesMatch } = require('../utils/title');
 
 function sanitizeCoverUrl(rawUrl) {

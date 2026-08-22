@@ -5,6 +5,7 @@ const getBookData = require('../services/fetchingService');
 const isbn = require('../middleware/isbn');
 const { mapBook } = require('../mappers/bookMapper');
 const { mapUser } = require('../mappers/userMapper');
+const { computeAvailability } = require('../mappers/loanMapper');
 
 const router = express.Router();
 
@@ -104,19 +105,60 @@ router.get('/', auth, async (req, res) => {
                 b.publisher,
                 b.published_year,
                 b.language,
-                b.created_at
+                b.created_at,
+                ub.is_lendable,
+                l.id AS live_loan_id
              FROM books b
              JOIN user_books ub ON ub.isbn = b.isbn
+             LEFT JOIN loans l
+                ON l.owner_id = ub.user_id AND l.isbn = b.isbn
+               AND l.status IN ('active', 'return_pending')
              WHERE ub.user_id = $1
              ORDER BY ub.created_at DESC`,
             [userId]
         );
 
-        res.json(result.rows.map(mapBook));
+        res.json(result.rows.map((row) => ({
+            ...mapBook(row),
+            isLendable: row.is_lendable,
+            availability: computeAvailability(
+                row.is_lendable,
+                Boolean(row.live_loan_id)
+            )
+        })));
 
     } catch (err) {
         console.error('Get shelf error:', err.message);
         res.status(500).json({ error: 'Error retrieving shelf' });
+    }
+});
+
+
+router.patch('/:isbn/lendable', auth, async (req, res) => {
+    const userId = req.user.id;
+    const { isbn } = req.params;
+    const { isLendable } = req.body;
+
+    try {
+        const result = await db.query(
+            `UPDATE user_books
+             SET is_lendable = $1
+             WHERE user_id = $2 AND isbn = $3
+             RETURNING isbn`,
+            [isLendable, userId, isbn]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                error: 'Book not found on your shelf'
+            });
+        }
+
+        res.json({ isbn, isLendable });
+
+    } catch (err) {
+        console.error('Update lendable error:', err.message);
+        res.status(500).json({ error: 'Error updating book' });
     }
 });
 
@@ -198,18 +240,34 @@ router.get('/:userId', auth, async (req, res) => {
                 b.publisher,
                 b.published_year,
                 b.language,
-                b.created_at
+                b.created_at,
+                ub.is_lendable,
+                l.id AS live_loan_id,
+                lp.id AS my_pending_loan_id
              FROM books b
              JOIN user_books ub ON ub.isbn = b.isbn
+             LEFT JOIN loans l
+                ON l.owner_id = ub.user_id AND l.isbn = b.isbn
+               AND l.status IN ('active', 'return_pending')
+             LEFT JOIN loans lp
+                ON lp.owner_id = ub.user_id AND lp.isbn = b.isbn
+               AND lp.borrower_id = $2 AND lp.status = 'pending'
              WHERE ub.user_id = $1
              ORDER BY ub.created_at DESC`,
-            [row.id]
+            [row.id, requesterId]
         );
 
         res.json({
             user,
             isPrivate,
-            books: booksResult.rows.map(mapBook)
+            books: booksResult.rows.map((bookRow) => ({
+                ...mapBook(bookRow),
+                availability: computeAvailability(
+                    bookRow.is_lendable,
+                    Boolean(bookRow.live_loan_id)
+                ),
+                myRequestStatus: bookRow.my_pending_loan_id ? 'pending' : null
+            }))
         });
 
     } catch (err) {

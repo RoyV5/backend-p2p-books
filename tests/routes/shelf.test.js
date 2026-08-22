@@ -360,6 +360,144 @@ describe('Shelf routes', () => {
 
             expect(response.statusCode).toBe(401);
         });
+
+        test('reports availability and isLendable for an unborrowed book', async () => {
+            await db.query(
+                `INSERT INTO books (isbn, title, authors)
+                 VALUES ($1, $2, $3)`,
+                [book.isbn, book.title, book.authors]
+            );
+            await db.query(
+                `INSERT INTO user_books (user_id, isbn)
+                 VALUES ($1, $2)`,
+                [user.id, book.isbn]
+            );
+
+            const response = await request(app)
+                .get('/shelf')
+                .set('Authorization', `Bearer ${token}`);
+
+            expect(response.body[0].isLendable).toBe(true);
+            expect(response.body[0].availability).toBe('available');
+        });
+
+        test('reports unavailable when the book is not lendable', async () => {
+            await db.query(
+                `INSERT INTO books (isbn, title, authors)
+                 VALUES ($1, $2, $3)`,
+                [book.isbn, book.title, book.authors]
+            );
+            await db.query(
+                `INSERT INTO user_books (user_id, isbn, is_lendable)
+                 VALUES ($1, $2, false)`,
+                [user.id, book.isbn]
+            );
+
+            const response = await request(app)
+                .get('/shelf')
+                .set('Authorization', `Bearer ${token}`);
+
+            expect(response.body[0].isLendable).toBe(false);
+            expect(response.body[0].availability).toBe('unavailable');
+        });
+
+        test('reports borrowed when a live loan exists', async () => {
+            await db.query(
+                `INSERT INTO books (isbn, title, authors)
+                 VALUES ($1, $2, $3)`,
+                [book.isbn, book.title, book.authors]
+            );
+            await db.query(
+                `INSERT INTO user_books (user_id, isbn)
+                 VALUES ($1, $2)`,
+                [user.id, book.isbn]
+            );
+
+            const borrowerResult = await db.query(
+                `INSERT INTO users (email, password_hash, handle, display_name)
+                 VALUES ($1, $2, $3, $4)
+                 RETURNING id`,
+                [
+                    'borrower@example.com',
+                    'not-a-real-password-hash',
+                    'Borrower_User',
+                    'Borrower User'
+                ]
+            );
+
+            await db.query(
+                `INSERT INTO loans (isbn, owner_id, borrower_id, status)
+                 VALUES ($1, $2, $3, 'active')`,
+                [book.isbn, user.id, borrowerResult.rows[0].id]
+            );
+
+            const response = await request(app)
+                .get('/shelf')
+                .set('Authorization', `Bearer ${token}`);
+
+            expect(response.body[0].availability).toBe('borrowed');
+        });
+    });
+
+    describe('PATCH /shelf/:isbn/lendable', () => {
+        beforeEach(async () => {
+            await db.query(
+                `INSERT INTO books (
+                    isbn,
+                    title,
+                    authors
+                )
+                VALUES ($1, $2, $3)`,
+                [
+                    book.isbn,
+                    book.title,
+                    book.authors
+                ]
+            );
+
+            await db.query(
+                `INSERT INTO user_books (user_id, isbn)
+                 VALUES ($1, $2)`,
+                [user.id, book.isbn]
+            );
+        });
+
+        test('updates the lendable flag for a book on the user shelf', async () => {
+            const response = await request(app)
+                .patch(`/shelf/${book.isbn}/lendable`)
+                .set('Authorization', `Bearer ${token}`)
+                .send({ isLendable: false });
+
+            expect(response.statusCode).toBe(200);
+            expect(response.body).toEqual({
+                isbn: book.isbn,
+                isLendable: false
+            });
+
+            const result = await db.query(
+                `SELECT is_lendable FROM user_books
+                 WHERE user_id = $1 AND isbn = $2`,
+                [user.id, book.isbn]
+            );
+            expect(result.rows[0].is_lendable).toBe(false);
+        });
+
+        test('returns 404 when the book is not on the user shelf', async () => {
+            const response = await request(app)
+                .patch('/shelf/9780000000000/lendable')
+                .set('Authorization', `Bearer ${token}`)
+                .send({ isLendable: false });
+
+            expect(response.statusCode).toBe(404);
+        });
+
+        test('rejects an unauthenticated request', async () => {
+            const response = await request(app)
+                .patch(`/shelf/${book.isbn}/lendable`)
+                .send({ isLendable: false });
+
+            expect(response.statusCode).toBe(401);
+        });
     });
 
     describe('DELETE /shelf/:isbn', () => {
@@ -548,6 +686,43 @@ describe('Shelf routes', () => {
                 .get(`/shelf/${otherUser.id}`);
 
             expect(response.statusCode).toBe(401);
+        });
+
+        test('reports myRequestStatus null with no pending request', async () => {
+            const response = await request(app)
+                .get(`/shelf/${otherUser.id}`)
+                .set('Authorization', `Bearer ${token}`);
+
+            expect(response.body.books[0].availability).toBe('available');
+            expect(response.body.books[0].myRequestStatus).toBeNull();
+        });
+
+        test('reports myRequestStatus pending after requesting the book', async () => {
+            await db.query(
+                `INSERT INTO loans (isbn, owner_id, borrower_id, status)
+                 VALUES ($1, $2, $3, 'pending')`,
+                [book.isbn, otherUser.id, user.id]
+            );
+
+            const response = await request(app)
+                .get(`/shelf/${otherUser.id}`)
+                .set('Authorization', `Bearer ${token}`);
+
+            expect(response.body.books[0].myRequestStatus).toBe('pending');
+        });
+
+        test('reports availability borrowed for a live loan', async () => {
+            await db.query(
+                `INSERT INTO loans (isbn, owner_id, borrower_id, status)
+                 VALUES ($1, $2, $3, 'active')`,
+                [book.isbn, otherUser.id, user.id]
+            );
+
+            const response = await request(app)
+                .get(`/shelf/${otherUser.id}`)
+                .set('Authorization', `Bearer ${token}`);
+
+            expect(response.body.books[0].availability).toBe('borrowed');
         });
     });
 });
